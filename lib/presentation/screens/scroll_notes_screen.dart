@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'dart:io';
+import 'dart:ui';
 import '../../data/models/note_model.dart';
 import '../../data/repositories/note_repository.dart';
 import '../widgets/notes_modal.dart';
@@ -8,22 +10,37 @@ class TwoWayScrollScreen extends StatefulWidget {
   const TwoWayScrollScreen({super.key});
 
   @override
-  // _TwoWayScrollScreenState createState() => _TwoWayScrollScreenState();
   State<TwoWayScrollScreen> createState() => TwoWayScrollScreenState();
 }
 
-class TwoWayScrollScreenState extends State<TwoWayScrollScreen> {
+class TwoWayScrollScreenState extends State<TwoWayScrollScreen>
+    with TickerProviderStateMixin {
   late PageController _pageController;
   int currentIndex = 0;
   List<NoteModel> notes = [];
-  final TextEditingController _notesController = TextEditingController();
   bool isLoading = true;
+  bool _showOverlays = true;
+  late AnimationController _overlayAnimationController;
+  late Animation<double> _overlayAnimation;
 
   @override
   void initState() {
     super.initState();
-    _pageController = PageController(initialPage: 0);
+    // Start at a high page number to allow infinite scroll both ways
+    _pageController = PageController(initialPage: 10000);
+    _overlayAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
+    _overlayAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _overlayAnimationController,
+        curve: Curves.easeInOut,
+      ),
+    );
+    _overlayAnimationController.forward();
     _loadNotes();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersive);
   }
 
   Future<void> _loadNotes() async {
@@ -32,36 +49,77 @@ class TwoWayScrollScreenState extends State<TwoWayScrollScreen> {
       notes = loadedNotes;
       isLoading = false;
       if (notes.isNotEmpty) {
-        _notesController.text = notes[0].noteText;
+        // Set initial index to 0 (actual note position)
+        currentIndex = 0;
       }
     });
+  }
+
+  void _toggleOverlays() {
+    setState(() {
+      _showOverlays = !_showOverlays;
+      if (_showOverlays) {
+        _overlayAnimationController.forward();
+      } else {
+        _overlayAnimationController.reverse();
+      }
+    });
+  }
+
+  // Get actual note index from infinite page index
+  int _getActualIndex(int pageIndex) {
+    if (notes.isEmpty) return 0;
+    return pageIndex % notes.length;
   }
 
   @override
   Widget build(BuildContext context) {
     if (isLoading) {
       return Scaffold(
-        appBar: AppBar(title: Text('Loading...'), backgroundColor: Colors.blue),
-        body: Center(child: CircularProgressIndicator()),
+        backgroundColor: Colors.black,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(color: Colors.white),
+              SizedBox(height: 16),
+              Text(
+                'Loading notes...',
+                style: TextStyle(color: Colors.white70, fontSize: 14),
+              ),
+            ],
+          ),
+        ),
       );
     }
 
     if (notes.isEmpty) {
       return Scaffold(
-        appBar:
-            AppBar(title: Text('Random Scroll'), backgroundColor: Colors.blue),
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+        ),
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.image_not_supported, size: 64, color: Colors.grey),
+              Icon(Icons.image_not_supported, size: 64, color: Colors.white30),
               SizedBox(height: 16),
-              Text('No notes available',
-                  style: TextStyle(fontSize: 18, color: Colors.grey)),
-              SizedBox(height: 16),
-              ElevatedButton(
+              Text(
+                'No notes available',
+                style: TextStyle(fontSize: 18, color: Colors.white70),
+              ),
+              SizedBox(height: 24),
+              ElevatedButton.icon(
                 onPressed: () => Navigator.pushNamed(context, '/upload'),
-                child: Text('Add First Note'),
+                icon: Icon(Icons.add_a_photo),
+                label: Text('Add First Note'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: Colors.black,
+                  padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                ),
               ),
             ],
           ),
@@ -70,462 +128,496 @@ class TwoWayScrollScreenState extends State<TwoWayScrollScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Random Scroll Mode'),
-        backgroundColor: Colors.blue,
-        actions: [
-          // Refresh button - resets to first image
-          IconButton(
-            icon: Icon(Icons.refresh),
-            onPressed: _resetScroll,
-            tooltip: 'Reset to Start',
-          ),
-
-          // Progress button - shows how many viewed
-          IconButton(
-            icon: Icon(Icons.bar_chart),
-            onPressed: _showProgress,
-            tooltip: 'View Progress',
-          ),
-
-          // Three-dot menu with options
-          PopupMenuButton<String>(
-            icon: Icon(Icons.more_vert),
-            onSelected: (value) => _handleMenuAction(value),
-            itemBuilder: (context) => [
-              PopupMenuItem(
-                value: 'edit',
-                child: Row(
-                  children: [
-                    Icon(Icons.edit, size: 20),
-                    SizedBox(width: 8),
-                    Text('Edit Tags'),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: 'notes',
-                child: Row(
-                  children: [
-                    Icon(Icons.note_add, size: 20),
-                    SizedBox(width: 8),
-                    Text('Add Notes'),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: 'connect',
-                child: Row(
-                  children: [
-                    Icon(Icons.link, size: 20),
-                    SizedBox(width: 8),
-                    Text('Connect Notes'),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: 'share',
-                child: Row(
-                  children: [
-                    Icon(Icons.share, size: 20),
-                    SizedBox(width: 8),
-                    Text('Share'),
-                  ],
-                ),
-              ),
-              PopupMenuDivider(),
-              PopupMenuItem(
-                value: 'delete',
-                child: Row(
-                  children: [
-                    Icon(Icons.delete, size: 20, color: Colors.red),
-                    SizedBox(width: 8),
-                    Text('Delete', style: TextStyle(color: Colors.red)),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-      body: Column(
+      backgroundColor: Colors.black,
+      body: Stack(
         children: [
-          // TOP: "Previous" button/indicator
-          GestureDetector(
-            onTap: _previousImage,
-            child: Container(
-              width: double.infinity,
-              padding: EdgeInsets.symmetric(vertical: 12),
-              color: Colors.grey[100],
-              child: Column(
-                children: [
-                  Icon(Icons.keyboard_arrow_up,
-                      color: Colors.grey[700], size: 28),
-                  Text(
-                    'Previous',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 14),
-                  ),
-                ],
-              ),
-            ),
+          // Main PageView - Infinite scrolling
+          PageView.builder(
+            controller: _pageController,
+            scrollDirection: Axis.vertical,
+            onPageChanged: (pageIndex) {
+              setState(() {
+                currentIndex = _getActualIndex(pageIndex);
+              });
+              HapticFeedback.lightImpact();
+            },
+            itemBuilder: (context, pageIndex) {
+              final actualIndex = _getActualIndex(pageIndex);
+              return _buildNotePage(notes[actualIndex]);
+            },
           ),
 
-          // MIDDLE: Scrollable image viewer with PageView
-          Expanded(
-            child: PageView.builder(
-              controller: _pageController,
-              scrollDirection:
-                  Axis.vertical, // THIS IS KEY - vertical scrolling
-              onPageChanged: (index) {
-                setState(() {
-                  currentIndex = index;
-                  _notesController.text = notes[index].noteText;
-                });
-              },
-              itemCount: notes.length,
-              itemBuilder: (context, index) {
-                final note = notes[index];
+          // Top Gradient Overlay
+          if (_showOverlays)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: FadeTransition(
+                opacity: _overlayAnimation,
+                child: Container(
+                  height: 120,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withOpacity(0.6),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
 
-                return Column(
-                  children: [
-                    // IMAGE SECTION (takes 60% of available space)
-                    Expanded(
-                      flex: 3,
-                      child: GestureDetector(
-                        onDoubleTap: () => _openFullscreen(note),
-                        child: InteractiveViewer(
-                          panEnabled: true,
-                          minScale: 1.0,
-                          maxScale: 4.0,
-                          child: Container(
-                            color: Colors.black,
-                            child: Center(
-                              child: Image.file(
-                                File(note.imagePath),
-                                fit: BoxFit.contain,
-                              ),
-                            ),
-                          ),
+          // Progress Indicator (Top-left)
+          if (_showOverlays)
+            Positioned(
+              top: 50,
+              left: 16,
+              child: FadeTransition(
+                opacity: _overlayAnimation,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                    child: Container(
+                      padding:
+                          EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '${currentIndex + 1}/${notes.length}',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          fontFeatures: [FontFeature.tabularFigures()],
                         ),
                       ),
                     ),
-
-                    // TAGS AND NOTES SECTION (takes 40% of space)
-                    Expanded(
-                      flex: 2,
-                      child: Container(
-                        width: double.infinity,
-                        padding: EdgeInsets.all(16),
-                        color: Colors.white,
-                        child: SingleChildScrollView(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Display tags as chips
-                              Text(
-                                'Tags:',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.grey[700],
-                                ),
-                              ),
-                              SizedBox(height: 8),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: note.tags.map((tag) {
-                                  return Chip(
-                                    avatar: Icon(Icons.book,
-                                        size: 16, color: Colors.blue),
-                                    label: Text(
-                                      tag.displayText,
-                                      style: TextStyle(fontSize: 12),
-                                    ),
-                                    backgroundColor: Colors.blue[50],
-                                    padding:
-                                        EdgeInsets.symmetric(horizontal: 4),
-                                  );
-                                }).toList(),
-                              ),
-
-                              SizedBox(height: 16),
-
-                              // Inline notes text field
-                              TextField(
-                                controller: _notesController,
-                                decoration: InputDecoration(
-                                  labelText: 'Notes',
-                                  hintText: 'Add your notes here...',
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  prefixIcon:
-                                      Icon(Icons.note, color: Colors.blue),
-                                  filled: true,
-                                  fillColor: Colors.grey[50],
-                                ),
-                                maxLines: 3,
-                                onChanged: (text) =>
-                                    _updateNotes(note.id!, text),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-
-          // BOTTOM: "Next" button/indicator
-          GestureDetector(
-            onTap: _nextImage,
-            child: Container(
-              width: double.infinity,
-              padding: EdgeInsets.symmetric(vertical: 12),
-              color: Colors.grey[100],
-              child: Column(
-                children: [
-                  Text(
-                    'Next',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 14),
                   ),
-                  Icon(Icons.keyboard_arrow_down,
-                      color: Colors.grey[700], size: 28),
-                ],
+                ),
               ),
             ),
-          ),
 
-          // PROGRESS BAR at bottom
-          Container(
-            width: double.infinity,
-            padding: EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-            color: Colors.blue[50],
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  'Image ${currentIndex + 1} of ${notes.length}',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.grey[700],
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                SizedBox(width: 16),
-                // Progress percentage
-                Text(
-                  '(${((currentIndex + 1) / notes.length * 100).toStringAsFixed(0)}%)',
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                ),
-              ],
+          // Three-Dot Menu (Top-right)
+          if (_showOverlays)
+            Positioned(
+              top: 45,
+              right: 16,
+              child: FadeTransition(
+                opacity: _overlayAnimation,
+                child: _buildThreeDotMenu(),
+              ),
             ),
-          ),
+
+          // Bottom Overlay Bar
+          if (_showOverlays)
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: FadeTransition(
+                opacity: _overlayAnimation,
+                child: _buildBottomOverlay(notes[currentIndex]),
+              ),
+            ),
         ],
       ),
     );
   }
 
-  // Navigate to previous image
-  void _previousImage() {
-    if (currentIndex > 0) {
-      _pageController.previousPage(
-        duration: Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Already at first image')),
-      );
-    }
+  Widget _buildNotePage(NoteModel note) {
+    return GestureDetector(
+      onTap: _toggleOverlays,
+      onDoubleTap: () => _openFullscreen(note),
+      child: Container(
+        color: Colors.black,
+        child: Center(
+          child: Hero(
+            tag: 'note_${note.id}',
+            child: InteractiveViewer(
+              minScale: 1.0,
+              maxScale: 4.0,
+              child: Image.file(
+                File(note.imagePath),
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    color: Colors.grey[900],
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.broken_image,
+                              size: 64, color: Colors.white30),
+                          SizedBox(height: 8),
+                          Text(
+                            'Image not found',
+                            style: TextStyle(color: Colors.white60),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
-  // Navigate to next image
-  void _nextImage() {
-    if (currentIndex < notes.length - 1) {
-      _pageController.nextPage(
-        duration: Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Already at last image')),
-      );
-    }
+  Widget _buildThreeDotMenu() {
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.2),
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.3),
+              blurRadius: 12,
+              offset: Offset(0, 4),
+            ),
+          ],
+        ),
+        child: ClipOval(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+            child: IconButton(
+              icon: Icon(Icons.more_vert, color: Colors.white, size: 24),
+              onPressed: _showMenuOptions,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
-  // Update notes in database when user types
-  void _updateNotes(int noteId, String text) async {
-    final note = notes.firstWhere((n) => n.id == noteId);
-    note.noteText = text;
-    await NoteRepository().updateNote(note);
+  void _showMenuOptions() {
+    HapticFeedback.mediumImpact();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Color(0xFF1C1C1E),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white30,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              SizedBox(height: 20),
+              _menuItem(Icons.note_add, 'Add Note', () {
+                Navigator.pop(context);
+                _showNotesModal();
+              }),
+              _menuItem(Icons.edit, 'Edit Tags', () {
+                Navigator.pop(context);
+                _showEditTagsDialog();
+              }),
+              _menuItem(Icons.link, 'Connect Notes', () {
+                Navigator.pop(context);
+                _showConnectNotesScreen();
+              }),
+              _menuItem(Icons.share, 'Share', () {
+                Navigator.pop(context);
+                _shareImage(notes[currentIndex]);
+              }),
+              Divider(color: Colors.white10),
+              _menuItem(Icons.delete, 'Delete', () {
+                Navigator.pop(context);
+                _confirmDelete(notes[currentIndex]);
+              }, isDestructive: true),
+              SizedBox(height: 20),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
-  // Handle three-dot menu actions
-  void _handleMenuAction(String action) {
-    final currentNote = notes[currentIndex];
-
-    switch (action) {
-      case 'notes':
-        _showNotesModal();
-        break;
-      case 'edit':
-        _showEditTagsDialog();
-        break;
-      case 'connect':
-        _showConnectNotesScreen();
-        break;
-      case 'share':
-        _shareImage(currentNote);
-        break;
-      case 'delete':
-        _confirmDelete(currentNote);
-        break;
-    }
+  Widget _menuItem(IconData icon, String title, VoidCallback onTap,
+      {bool isDestructive = false}) {
+    return ListTile(
+      leading: Icon(
+        icon,
+        color: isDestructive ? Colors.red : Colors.white,
+        size: 24,
+      ),
+      title: Text(
+        title,
+        style: TextStyle(
+          color: isDestructive ? Colors.red : Colors.white,
+          fontSize: 16,
+        ),
+      ),
+      onTap: onTap,
+    );
   }
 
-  // Show full notes editor
+  Widget _buildBottomOverlay(NoteModel note) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.transparent,
+            Colors.black.withOpacity(0.7),
+          ],
+        ),
+      ),
+      child: SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: note.tags.map((tag) {
+                        return Container(
+                          margin: EdgeInsets.only(right: 8),
+                          padding:
+                              EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.3),
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text('📚', style: TextStyle(fontSize: 12)),
+                              SizedBox(width: 4),
+                              Text(
+                                tag.subject,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              if (tag.chapter != null) ...[
+                                Text(' • ',
+                                    style: TextStyle(
+                                        color: Colors.white70, fontSize: 12)),
+                                Text(
+                                  tag.chapter!,
+                                  style: TextStyle(
+                                      color: Colors.white70, fontSize: 12),
+                                ),
+                              ],
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+                SizedBox(width: 12),
+                _actionIcon(Icons.chat_bubble_outline, () => _showNotesModal()),
+                SizedBox(width: 16),
+                _actionIcon(Icons.favorite_border, () => _toggleFavorite()),
+                SizedBox(width: 16),
+                _actionIcon(Icons.bookmark_border, () => _toggleBookmark()),
+              ],
+            ),
+            if (note.noteText.isNotEmpty) ...[
+              SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  note.noteText,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    height: 1.4,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _actionIcon(IconData icon, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      child: Container(
+        padding: EdgeInsets.all(4),
+        child: Icon(
+          icon,
+          color: Colors.white,
+          size: 28,
+          shadows: [
+            Shadow(
+              blurRadius: 8,
+              color: Colors.black.withOpacity(0.5),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showNotesModal() {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      backgroundColor: Colors.transparent,
       builder: (context) => NotesModal(note: notes[currentIndex]),
     );
   }
 
-  // Show edit tags dialog (placeholder)
   void _showEditTagsDialog() {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Edit tags feature coming soon!')),
+      SnackBar(
+        content: Text('Edit tags feature coming soon!'),
+        backgroundColor: Colors.blue,
+      ),
     );
   }
 
-  // Show connect notes screen (placeholder)
   void _showConnectNotesScreen() {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Connect notes feature coming soon!')),
+      SnackBar(
+        content: Text('Connect notes feature coming soon!'),
+        backgroundColor: Colors.blue,
+      ),
     );
   }
 
-  // Share image (placeholder)
   void _shareImage(NoteModel note) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Share feature coming soon!')),
+      SnackBar(
+        content: Text('Share feature coming soon!'),
+        backgroundColor: Colors.blue,
+      ),
     );
   }
 
-  // Confirm delete with dialog
+  void _toggleFavorite() {
+    HapticFeedback.mediumImpact();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Marked as favorite!'),
+        duration: Duration(seconds: 1),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+
+  void _toggleBookmark() {
+    HapticFeedback.mediumImpact();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Saved to bookmarks!'),
+        duration: Duration(seconds: 1),
+        backgroundColor: Colors.blue,
+      ),
+    );
+  }
+
   void _confirmDelete(NoteModel note) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Delete Note?'),
+        backgroundColor: Color(0xFF1C1C1E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: Text('Delete Note?', style: TextStyle(color: Colors.white)),
         content: Text(
-            'Are you sure you want to delete this note? This cannot be undone.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              // Capture context-dependent objects BEFORE async operation
-              final navigator = Navigator.of(context);
-              final messenger = ScaffoldMessenger.of(context);
-
-              // Async operation
-              await NoteRepository().deleteNote(note.id!);
-
-              // Check mounted after async
-              if (!mounted) return;
-
-              // Use captured objects
-              navigator.pop();
-              navigator.pop(); // Go back to home
-              messenger.showSnackBar(
-                const SnackBar(content: Text('Note deleted')),
-              );
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: Text('Delete'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Reset to first image
-  void _resetScroll() {
-    _pageController.animateToPage(
-      0,
-      duration: Duration(milliseconds: 500),
-      curve: Curves.easeInOut,
-    );
-  }
-
-  // Show progress dialog
-  void _showProgress() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Viewing Progress'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            LinearProgressIndicator(
-              value: (currentIndex + 1) / notes.length,
-              backgroundColor: Colors.grey[300],
-              color: Colors.blue,
-            ),
-            SizedBox(height: 16),
-            Text(
-              'You have viewed ${currentIndex + 1} of ${notes.length} images',
-              style: TextStyle(fontSize: 14),
-            ),
-            SizedBox(height: 8),
-            Text(
-              '${((currentIndex + 1) / notes.length * 100).toStringAsFixed(1)}% Complete',
-              style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.blue),
-            ),
-          ],
+          'This action cannot be undone.',
+          style: TextStyle(color: Colors.white70),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('OK'),
+            child: Text('Cancel', style: TextStyle(color: Colors.blue)),
+          ),
+          TextButton(
+            onPressed: () async {
+              final navigator = Navigator.of(context);
+              final messenger = ScaffoldMessenger.of(context);
+
+              await NoteRepository().deleteNote(note.id!);
+
+              if (!mounted) return;
+
+              navigator.pop();
+              navigator.pop();
+              messenger.showSnackBar(
+                SnackBar(
+                  content: Text('Note deleted'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            },
+            child: Text('Delete', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
     );
   }
 
-  // Open fullscreen image viewer
   void _openFullscreen(NoteModel note) {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => Scaffold(
           backgroundColor: Colors.black,
-          appBar: AppBar(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-          ),
-          body: Center(
-            child: InteractiveViewer(
-              minScale: 1.0,
-              maxScale: 5.0,
-              child: Image.file(File(note.imagePath)),
-            ),
+          body: Stack(
+            children: [
+              Center(
+                child: InteractiveViewer(
+                  minScale: 1.0,
+                  maxScale: 5.0,
+                  child: Image.file(File(note.imagePath)),
+                ),
+              ),
+              Positioned(
+                top: 40,
+                left: 16,
+                child: IconButton(
+                  icon: Icon(Icons.close, color: Colors.white, size: 28),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -535,7 +627,8 @@ class TwoWayScrollScreenState extends State<TwoWayScrollScreen> {
   @override
   void dispose() {
     _pageController.dispose();
-    _notesController.dispose();
+    _overlayAnimationController.dispose();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
 }
