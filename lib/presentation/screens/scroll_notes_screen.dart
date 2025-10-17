@@ -26,7 +26,6 @@ class TwoWayScrollScreenState extends State<TwoWayScrollScreen>
   @override
   void initState() {
     super.initState();
-    // Start at a high page number to allow infinite scroll both ways
     _pageController = PageController(initialPage: 10000);
     _overlayAnimationController = AnimationController(
       vsync: this,
@@ -49,7 +48,6 @@ class TwoWayScrollScreenState extends State<TwoWayScrollScreen>
       notes = loadedNotes;
       isLoading = false;
       if (notes.isNotEmpty) {
-        // Set initial index to 0 (actual note position)
         currentIndex = 0;
       }
     });
@@ -66,7 +64,6 @@ class TwoWayScrollScreenState extends State<TwoWayScrollScreen>
     });
   }
 
-  // Get actual note index from infinite page index
   int _getActualIndex(int pageIndex) {
     if (notes.isEmpty) return 0;
     return pageIndex % notes.length;
@@ -131,7 +128,6 @@ class TwoWayScrollScreenState extends State<TwoWayScrollScreen>
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // Main PageView - Infinite scrolling
           PageView.builder(
             controller: _pageController,
             scrollDirection: Axis.vertical,
@@ -146,8 +142,6 @@ class TwoWayScrollScreenState extends State<TwoWayScrollScreen>
               return _buildNotePage(notes[actualIndex]);
             },
           ),
-
-          // Top Gradient Overlay
           if (_showOverlays)
             Positioned(
               top: 0,
@@ -170,8 +164,6 @@ class TwoWayScrollScreenState extends State<TwoWayScrollScreen>
                 ),
               ),
             ),
-
-          // Progress Indicator (Top-left)
           if (_showOverlays)
             Positioned(
               top: 50,
@@ -203,8 +195,6 @@ class TwoWayScrollScreenState extends State<TwoWayScrollScreen>
                 ),
               ),
             ),
-
-          // Three-Dot Menu (Top-right)
           if (_showOverlays)
             Positioned(
               top: 45,
@@ -214,8 +204,6 @@ class TwoWayScrollScreenState extends State<TwoWayScrollScreen>
                 child: _buildThreeDotMenu(),
               ),
             ),
-
-          // Bottom Overlay Bar
           if (_showOverlays)
             Positioned(
               bottom: 0,
@@ -377,6 +365,9 @@ class TwoWayScrollScreenState extends State<TwoWayScrollScreen>
   }
 
   Widget _buildBottomOverlay(NoteModel note) {
+    // Check if note has text
+    final bool hasNotes = note.noteText.isNotEmpty;
+
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
@@ -390,107 +381,117 @@ class TwoWayScrollScreenState extends State<TwoWayScrollScreen>
         ),
       ),
       child: SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        child: Row(
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: note.tags.map((tag) {
-                        return Container(
-                          margin: EdgeInsets.only(right: 8),
-                          padding:
-                              EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.3),
-                              width: 1,
+            // Tags (Left side - scrollable)
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: note.tags.map((tag) {
+                    return Container(
+                      margin: EdgeInsets.only(right: 8),
+                      padding:
+                          EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.3),
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('📚', style: TextStyle(fontSize: 12)),
+                          SizedBox(width: 4),
+                          Text(
+                            tag.subject,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text('📚', style: TextStyle(fontSize: 12)),
-                              SizedBox(width: 4),
-                              Text(
-                                tag.subject,
+                          if (tag.chapter != null) ...[
+                            Text(' • ',
                                 style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              if (tag.chapter != null) ...[
-                                Text(' • ',
-                                    style: TextStyle(
-                                        color: Colors.white70, fontSize: 12)),
-                                Text(
-                                  tag.chapter!,
-                                  style: TextStyle(
-                                      color: Colors.white70, fontSize: 12),
-                                ),
-                              ],
-                            ],
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                  ),
-                ),
-                SizedBox(width: 12),
-                _actionIcon(Icons.chat_bubble_outline, () => _showNotesModal()),
-                SizedBox(width: 16),
-                _actionIcon(Icons.favorite_border, () => _toggleFavorite()),
-                SizedBox(width: 16),
-                _actionIcon(Icons.bookmark_border, () => _toggleBookmark()),
-              ],
-            ),
-            if (note.noteText.isNotEmpty) ...[
-              SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  note.noteText,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    height: 1.4,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                                    color: Colors.white70, fontSize: 12)),
+                            Text(
+                              tag.chapter!,
+                              style: TextStyle(
+                                  color: Colors.white70, fontSize: 12),
+                            ),
+                          ],
+                        ],
+                      ),
+                    );
+                  }).toList(),
                 ),
               ),
-            ],
+            ),
+
+            SizedBox(width: 12),
+
+            // Action Icons (Right side)
+            // Notes Button - Changes appearance based on whether notes exist
+            _actionIcon(
+              hasNotes ? Icons.chat_bubble : Icons.chat_bubble_outline,
+              () => _showNotesModal(),
+              color: hasNotes ? Colors.blue : Colors.white,
+              showBadge: hasNotes,
+            ),
+            SizedBox(width: 16),
+            _actionIcon(Icons.favorite_border, () => _toggleFavorite()),
+            SizedBox(width: 16),
+            _actionIcon(Icons.bookmark_border, () => _toggleBookmark()),
           ],
         ),
       ),
     );
   }
 
-  Widget _actionIcon(IconData icon, VoidCallback onTap) {
+  Widget _actionIcon(IconData icon, VoidCallback onTap,
+      {Color? color, bool showBadge = false}) {
     return GestureDetector(
       onTap: () {
         HapticFeedback.selectionClick();
         onTap();
       },
-      child: Container(
-        padding: EdgeInsets.all(4),
-        child: Icon(
-          icon,
-          color: Colors.white,
-          size: 28,
-          shadows: [
-            Shadow(
-              blurRadius: 8,
-              color: Colors.black.withOpacity(0.5),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            padding: EdgeInsets.all(4),
+            child: Icon(
+              icon,
+              color: color ?? Colors.white,
+              size: 28,
+              shadows: [
+                Shadow(
+                  blurRadius: 8,
+                  color: Colors.black.withOpacity(0.5),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+          // Small badge indicator when notes exist
+          if (showBadge)
+            Positioned(
+              top: 0,
+              right: 0,
+              child: Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: Colors.blue,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.black, width: 1.5),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -501,7 +502,10 @@ class TwoWayScrollScreenState extends State<TwoWayScrollScreen>
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => NotesModal(note: notes[currentIndex]),
-    );
+    ).then((_) {
+      // Refresh UI after modal closes to update note button appearance
+      setState(() {});
+    });
   }
 
   void _showEditTagsDialog() {
