@@ -376,7 +376,7 @@ class _EditTagsDialogState extends State<_EditTagsDialog> {
 
       if (!mounted) return;
 
-      Navigator.pop(context);
+      Navigator.pop(context , true );
       widget.onSave();
 
       ScaffoldMessenger.of(context).showSnackBar(
